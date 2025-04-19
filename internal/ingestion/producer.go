@@ -33,7 +33,34 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
+func EnsureTopic() {
+	conn, err := kafka.Dial("tcp", "kafka1:29092")
+	if err != nil {
+		log.Printf("⚠️ Kafka dial error: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	topic := os.Getenv("KAFKA_TOPIC")
+	if topic == "" {
+		topic = "reviews.raw"
+	}
+
+	err = conn.CreateTopics(kafka.TopicConfig{
+		Topic:             topic,
+		NumPartitions:     3,
+		ReplicationFactor: 2,
+	})
+	if err != nil {
+		log.Printf("⚠️ Topic creation failed (might already exist): %v", err)
+	} else {
+		log.Printf("✅ Kafka topic %s ensured", topic)
+	}
+}
+
 func StartS3StreamIngestion() {
+	EnsureTopic()
+
 	envMap := make(map[string]string)
 	for _, e := range os.Environ() {
 		parts := strings.SplitN(e, "=", 2)
