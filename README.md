@@ -130,7 +130,7 @@ This will spin up:
 
 ## 🔥 Endpoints
 
-### `GET /hotels/{hotel_id}/reviews`
+### `GET /hotels/{hotel_id}/reviews example: /hotels/4/reviews?page=1&limit=5&sort=rating_desc`
 
 > Returns hotel’s average rating and recent 50 reviews.
 
