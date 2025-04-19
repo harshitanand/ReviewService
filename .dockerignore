@@ -1,0 +1,36 @@
+# Ignore binaries
+/app
+*.exe
+*.out
+
+# Go build/cache
+bin/
+*.test
+*.log
+*.prof
+*.tmp
+
+# Go modules cache
+/pkg/
+vendor/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Env files (optional - unless you want them inside container)
+.env
+
+# Test data (optional if you don't need them inside container)
+testdata/
+coverage.*
+*.jl
