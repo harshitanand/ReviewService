@@ -23,14 +23,12 @@ func ProcessJLLineWithSuppressedErrors(raw map[string]interface{}, db *gorm.DB) 
 	}
 }
 
-// safeWrapJLLine wraps the original ProcessJLLine to return errors
 func safeWrapJLLine(raw map[string]interface{}, db *gorm.DB) error {
 	defer func() {
 		if r := recover(); r != nil {
-			panic(r) // Let the outer recover handle it
+			panic(r)
 		}
 	}()
-
 	ProcessJLLine(raw, db)
 	return nil
 }
@@ -49,30 +47,62 @@ func ProcessJLLine(raw map[string]interface{}, db *gorm.DB) {
 	comment := raw["comment"].(map[string]interface{})
 	reviewerInfo := comment["reviewerInfo"].(map[string]interface{})
 
-	hotel := models.Hotel{ExternalID: hotelID, Name: hotelName}
-	db.FirstOrCreate(&hotel, models.Hotel{ExternalID: hotelID})
+	// ✅ Ensure hotel creation is concurrency-safe
+	var hotel models.Hotel
+	if err := db.Where("external_id = ?", hotelID).First(&hotel).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			newHotel := models.Hotel{ExternalID: hotelID, Name: hotelName}
+			if err := db.Create(&newHotel).Error; err != nil {
+				// Retry after create error (duplicate from another thread)
+				if dbErr := db.Where("external_id = ?", hotelID).First(&hotel).Error; dbErr != nil {
+					log.Printf("❌ Hotel fetch failed after duplicate insert (hotelId=%d): %v", hotelID, dbErr)
+					return
+				}
+			} else {
+				hotel = newHotel
+			}
+		} else {
+			log.Printf("❌ DB error querying hotel (hotelId=%d): %v", hotelID, err)
+			return
+		}
+	}
 
-	platform := models.Platform{Name: platformName}
-	db.FirstOrCreate(&platform, platform)
+	// ✅ Platform creation (also concurrency-safe)
+	var platform models.Platform
+	if err := db.Where("name = ?", platformName).First(&platform).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			platform = models.Platform{Name: platformName}
+			if err := db.Create(&platform).Error; err != nil {
+				if err := db.Where("name = ?", platformName).First(&platform).Error; err != nil {
+					log.Printf("❌ Platform recovery failed: %v", err)
+					return
+				}
+			}
+		} else {
+			log.Printf("❌ DB error querying platform: %v", err)
+			return
+		}
+	}
 
+	// ✅ Reviewer creation (based on composite key)
 	reviewer := models.Reviewer{
 		CountryName:     getStr(reviewerInfo["countryName"]),
 		ReviewGroupName: getStr(reviewerInfo["reviewGroupName"]),
 		RoomTypeName:    getStr(reviewerInfo["roomTypeName"]),
 	}
-	db.FirstOrCreate(&reviewer, reviewer)
-
-	hotelReviewID := parseInt64(comment["hotelReviewId"])
-
-	var existing models.Review
-	err := db.Where("hotel_review_id = ?", hotelReviewID).First(&existing).Error
-	if err == nil {
-		// Found a duplicate, skip insertion
+	if err := db.Where(&reviewer).FirstOrCreate(&reviewer).Error; err != nil {
+		log.Printf("❌ Error creating reviewer: %v", err)
 		return
 	}
-	if err != nil && err != gorm.ErrRecordNotFound {
-		// Log real errors only
-		log.Printf("❌ DB error while checking for existing review (hotelReviewID=%d): %v", hotelReviewID, err)
+
+	// ✅ Review creation (skip if duplicate)
+	hotelReviewID := parseInt64(comment["hotelReviewId"])
+	var existing models.Review
+	if err := db.Where("hotel_review_id = ?", hotelReviewID).First(&existing).Error; err == nil {
+		return // duplicate
+	} else if err != gorm.ErrRecordNotFound {
+		log.Printf("❌ Error checking for review (id=%d): %v", hotelReviewID, err)
+		return
 	}
 
 	review := models.Review{
@@ -91,16 +121,21 @@ func ProcessJLLine(raw map[string]interface{}, db *gorm.DB) {
 		return
 	}
 
+	// ✅ Rating summary update
 	var summary models.HotelRatingsSummary
-	if err := db.First(&summary, "hotel_id = ?", hotel.ID).Error; err != nil {
-		summary = models.HotelRatingsSummary{
-			HotelID:       hotel.ID,
-			TotalReviews:  1,
-			TotalRating:   float64(review.Rating),
-			AverageRating: float64(review.Rating),
-			LastUpdated:   time.Now(),
+	if err := db.Where("hotel_id = ?", hotel.ID).First(&summary).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			summary = models.HotelRatingsSummary{
+				HotelID:       hotel.ID,
+				TotalReviews:  1,
+				TotalRating:   float64(review.Rating),
+				AverageRating: float64(review.Rating),
+				LastUpdated:   time.Now(),
+			}
+			db.Create(&summary)
+		} else {
+			log.Printf("❌ Error loading hotel summary: %v", err)
 		}
-		db.Create(&summary)
 	} else {
 		summary.TotalReviews++
 		summary.TotalRating += float64(review.Rating)
