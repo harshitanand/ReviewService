@@ -1,3 +1,7 @@
+
+![Go](https://img.shields.io/badge/Go-1.22-blue) ![Kafka](https://img.shields.io/badge/Kafka-Streaming-informational) ![Dockerized](https://img.shields.io/badge/Dockerized-yes-brightgreen) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ![Go CI](https://github.com/harshitanand/ReviewService/actions/workflows/go-ci.yml/badge.svg)
+
+
 # 🚀 Review System Microservice
 
 > **A high-performance, cloud-native review ingestion and aggregation system.**  
