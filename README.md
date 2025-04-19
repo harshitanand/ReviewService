@@ -70,6 +70,50 @@
 
 ---
 
+---
+
+## 📌 Assumptions
+
+- Incoming `.jl` files from S3 are line-delimited JSON and well-structured.
+- The S3 bucket is accessible with provided credentials and region.
+- Kafka brokers and PostgreSQL are reachable and ready at container start time.
+- Review data includes consistent fields like `hotelId`, `platform`, `comment.rating`, and `reviewerInfo`.
+
+---
+
+## 🔄 How Ingestion Works
+
+The system automatically ingests review data daily via the following mechanism:
+
+### ✅ Automated Daily Flow
+
+1. **S3 File Detection**  
+   On container start, the Go app looks for a `.jl` file named with today’s date (e.g., `2025-04-20.jl`) in the S3 bucket and path.
+
+2. **Kafka Producer**  
+   Reads the `.jl` file line by line and sends reviews as individual messages to a Kafka topic (`reviews.raw`).
+
+3. **Kafka Consumer**  
+   A concurrent consumer group ingests these messages using worker goroutines and processes them into PostgreSQL.
+
+4. **Deduplication & Safety**  
+   Duplicate reviews (based on `hotel_review_id`) are ignored. Hotel creation is race-safe and atomic.
+
+5. **Rating Summary**  
+   A `hotel_ratings_summary` table is automatically updated per review for fast read APIs.
+
+---
+
+## 🧪 How to Manually Trigger Ingestion (Optional)
+
+If needed, place mock files into the `testdata/` folder and modify `main.go` to:
+
+```go
+handlers.IngestJLFileAsync("testdata/2025-04-21.jl")
+```
+
+---
+
 ## 🏗️ Project Structure
 
 ```bash
