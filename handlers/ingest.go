@@ -14,10 +14,6 @@ import (
 	"gorm.io/gorm"
 )
 
-type JLLine struct {
-	Raw map[string]interface{}
-}
-
 func IngestJLFileAsync(filename string) {
 	go func() {
 		if err := ingestJLWorkerPool(filename); err != nil {
@@ -95,7 +91,7 @@ func processJLLine(raw map[string]interface{}, db *gorm.DB) {
 
 	hotelReviewID := parseInt64(comment["hotelReviewId"])
 
-	// Check if review already exists
+	// Prevent duplicates
 	var existing models.Review
 	if err := db.Where("hotel_review_id = ?", hotelReviewID).First(&existing).Error; err == nil {
 		// log.Printf("⚠️  Duplicate review skipped: hotelReviewId=%d", hotelReviewID)
@@ -115,6 +111,28 @@ func processJLLine(raw map[string]interface{}, db *gorm.DB) {
 
 	if err := db.Create(&review).Error; err != nil {
 		log.Printf("❌ Failed to insert review (hotelReviewId=%d): %v", hotelReviewID, err)
+		return
+	}
+
+	// Update ratings summary
+	var summary models.HotelRatingsSummary
+	if err := db.First(&summary, "hotel_id = ?", hotel.ID).Error; err != nil {
+		// New summary
+		summary = models.HotelRatingsSummary{
+			HotelID:       hotel.ID,
+			TotalReviews:  1,
+			TotalRating:   float64(review.Rating),
+			AverageRating: float64(review.Rating),
+			LastUpdated:   time.Now(),
+		}
+		db.Create(&summary)
+	} else {
+		// Update summary
+		summary.TotalReviews += 1
+		summary.TotalRating += float64(review.Rating)
+		summary.AverageRating = summary.TotalRating / float64(summary.TotalReviews)
+		summary.LastUpdated = time.Now()
+		db.Save(&summary)
 	}
 }
 

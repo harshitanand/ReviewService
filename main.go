@@ -2,9 +2,10 @@ package main
 
 import (
 	"log"
+	"time"
 
 	_ "review-system/docs"
-	"review-system/handlers"
+	"review-system/internal/ingestion"
 	"review-system/models"
 	"review-system/routes"
 
@@ -27,16 +28,38 @@ func main() {
 
 	// Initialize DB using environment
 	models.InitDB()
-
 	// Check if reviews already exist
 	var count int64
 	models.GetDB().Model(&models.Review{}).Count(&count)
 
 	// if count == 0 {
 	// 	log.Println("📥 No reviews found. Ingesting test data from testdata/sample.jl...")
-	handlers.IngestJLFileAsync("testdata/sample_1000.jl") // ✅ fire and forget
+	// handlers.IngestJLFileAsync("testdata/sample_1000.jl") // ✅ fire and forget
 	// }
-	log.Println(count)
+
+	// Start Kafka consumer to ingest reviews
+	ingestion.StartKafkaConsumer()
+
+	// Periodic daily ingestion check
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	var lastIngested string
+
+	go func() {
+		for {
+			now := time.Now().UTC()
+			today := now.Format("2006-01-02")
+
+			if today != lastIngested {
+				log.Printf("📆 Running ingestion for %s\n", today)
+				ingestion.StartS3StreamIngestion()
+				lastIngested = today
+			}
+
+			<-ticker.C
+		}
+	}()
 
 	// Start Echo server
 	e := echo.New()
