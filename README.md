@@ -114,6 +114,27 @@ handlers.IngestJLFileAsync("testdata/2025-04-21.jl")
 
 ---
 
+## 🌐 Multi-Provider Support
+
+The system is designed to support **reviews from multiple platforms** such as:
+
+- ✅ Agoda
+- ✅ Booking.com
+- ✅ Expedia
+- ✅ Any future providers...
+
+### How It Works:
+
+| Component        | Description |
+|------------------|-------------|
+| `platform` table | Tracks each review’s source platform (e.g., Agoda, Booking) |
+| `Review` model   | Stores `PlatformID` as a foreign key |
+| `Kafka Payload`  | Includes `platform` name from the `.jl` file |
+| S3 Integration   | Review files can be uploaded to the same S3 prefix with mixed or split platform data |
+| API              | Aggregates all reviews regardless of platform or filters by provider if needed |
+
+---
+
 ## 🏗️ Project Structure
 
 ```bash
