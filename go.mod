@@ -13,7 +13,7 @@ require (
 	github.com/labstack/echo/v4 v4.11.1
 	github.com/segmentio/kafka-go v0.4.47
 	github.com/swaggo/echo-swagger v1.3.1
-	github.com/swaggo/swag v1.8.12
+	github.com/swaggo/swag v1.16.2
 	gorm.io/driver/postgres v1.4.7
 	gorm.io/gorm v1.25.5
 )
