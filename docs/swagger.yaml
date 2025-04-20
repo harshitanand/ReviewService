@@ -1,0 +1,85 @@
+basePath: /
+definitions:
+  models.AggregatedHotelReview:
+    properties:
+      averageRating:
+        type: number
+      hotelID:
+        type: integer
+      hotelName:
+        type: string
+      reviewCount:
+        type: integer
+    type: object
+  models.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  models.ReviewDetail:
+    properties:
+      country_name:
+        type: string
+      rating:
+        type: number
+      review_date:
+        type: string
+      review_group_name:
+        type: string
+      review_text:
+        type: string
+      review_title:
+        type: string
+      room_type_name:
+        type: string
+    type: object
+  models.ReviewResponse:
+    properties:
+      hotel:
+        $ref: '#/definitions/models.AggregatedHotelReview'
+      reviews:
+        items:
+          $ref: '#/definitions/models.ReviewDetail'
+        type: array
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: API to fetch hotel reviews and ratings.
+  title: Hotel Review API
+  version: "1.0"
+paths:
+  /hotels/{hotel_id}/reviews:
+    get:
+      description: Returns average rating and paginated reviews for a hotel
+      parameters:
+      - description: Hotel ID
+        in: path
+        name: hotel_id
+        required: true
+        type: integer
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Reviews per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ReviewResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Get hotel reviews and overall rating
+      tags:
+      - reviews
+swagger: "2.0"

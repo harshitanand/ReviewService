@@ -18,8 +18,8 @@ import (
 // @Param page query int false "Page number" default(1)
 // @Param limit query int false "Reviews per page" default(20)
 // @Success 200 {object} map[string]interface{}
-// @Failure 400 {object} echo.Map
-// @Failure 200 {object} echo.Map
+// @Success 200 {object} models.ReviewResponse
+// @Failure 500 {object} models.ErrorResponse
 // @Router /hotels/{hotel_id}/reviews [get]
 func GetHotelReviews(c echo.Context) error {
 	hotelID := c.Param("id")
