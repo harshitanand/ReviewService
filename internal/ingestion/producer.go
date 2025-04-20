@@ -35,17 +35,25 @@ func getEnv(key, fallback string) string {
 }
 
 func EnsureTopic() {
-	conn, err := kafka.Dial("tcp", "kafka1:29092")
-	if err != nil {
-		log.Printf("⚠️ Kafka dial error: %v", err)
+	var conn *kafka.Conn
+	var err error
+
+	topic := KafkaTopic
+	for _, broker := range KafkaBrokers {
+		conn, err = kafka.Dial("tcp", broker)
+		if err != nil {
+			log.Printf("⚠️ Kafka dial failed on broker %s: %v", broker, err)
+			continue
+		}
+		log.Printf("🔗 Connected to Kafka broker: %s", broker)
+		break
+	}
+
+	if conn == nil {
+		log.Printf("❌ Could not connect to any Kafka broker")
 		return
 	}
 	defer conn.Close()
-
-	topic := os.Getenv("KAFKA_TOPIC")
-	if topic == "" {
-		topic = "reviews.raw"
-	}
 
 	err = conn.CreateTopics(kafka.TopicConfig{
 		Topic:             topic,

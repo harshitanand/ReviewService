@@ -29,8 +29,8 @@ func main() {
 	// Initialize DB using environment
 	models.InitDB()
 	// Check if reviews already exist
-	var count int64
-	models.GetDB().Model(&models.Review{}).Count(&count)
+	// var count int64
+	// models.GetDB().Model(&models.Review{}).Count(&count)
 
 	// if count == 0 {
 	// 	log.Println("📥 No reviews found. Ingesting test data from testdata/sample.jl...")
