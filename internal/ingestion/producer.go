@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -79,13 +80,66 @@ func StartS3StreamIngestion() {
 			return
 		}
 
-		if err := StreamAndBulkProduceFromS3(envMap["S3_BUCKET"], key); err != nil {
+		if err := StreamAndBulkProduceFromS3Read(envMap["S3_BUCKET"], key); err != nil {
 			log.Printf("❌ Error streaming from S3: %v", err)
 		} else {
 			markAsProcessed(marker)
 			log.Printf("✅ Successfully streamed: %s", marker)
 		}
 	}()
+}
+
+func StreamAndBulkProduceFromS3Read(bucket, key string) error {
+	region := os.Getenv("AWS_REGION")
+	if region == "" {
+		region = "ap-south-1" // fallback
+	}
+
+	// Construct public URL
+	url := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", bucket, region, key)
+	log.Printf("🌐 Fetching public S3 file: %s", url)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to fetch public S3 file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("non-200 status from S3: %s", resp.Status)
+	}
+
+	writer := kafka.NewWriter(kafka.WriterConfig{
+		Brokers:  KafkaBrokers,
+		Topic:    KafkaTopic,
+		Balancer: &kafka.LeastBytes{},
+	})
+	defer writer.Close()
+
+	log.Printf("📤 Streaming public S3 and producing in batches of %d...", BatchSize)
+
+	scanner := bufio.NewScanner(resp.Body)
+	var batch []kafka.Message
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		batch = append(batch, kafka.Message{Value: []byte(line)})
+
+		if len(batch) >= BatchSize {
+			if err := writer.WriteMessages(context.Background(), batch...); err != nil {
+				return fmt.Errorf("❌ failed to write batch: %w", err)
+			}
+			batch = batch[:0]
+		}
+	}
+
+	if len(batch) > 0 {
+		if err := writer.WriteMessages(context.Background(), batch...); err != nil {
+			return fmt.Errorf("❌ failed to write final batch: %w", err)
+		}
+	}
+
+	return scanner.Err()
 }
 
 func StreamAndBulkProduceFromS3(bucket, key string) error {
