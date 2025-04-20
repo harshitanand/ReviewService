@@ -34,7 +34,7 @@ func main() {
 
 	// if count == 0 {
 	// 	log.Println("📥 No reviews found. Ingesting test data from testdata/sample.jl...")
-	// handlers.IngestJLFileAsync("testdata/sample_1000.jl") // ✅ fire and forget
+	// handlers.IngestJLFileAsync("testdata/2025-04-19.jl") // ✅ fire and forget
 	// }
 
 	// Start Kafka consumer to ingest reviews

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"review-system/models"
 	"strings"
 	"sync"
@@ -14,12 +15,20 @@ import (
 	"gorm.io/gorm"
 )
 
+const ingestMarkerFile = "processed.log"
+
 func IngestJLFileAsync(filename string) {
 	go func() {
+		if isAlreadyIngested(filename) {
+			log.Printf("🛑 Skipping already ingested file: %s", filename)
+			return
+		}
+
 		if err := ingestJLWorkerPool(filename); err != nil {
 			log.Printf("❌ Ingestion failed: %v", err)
 		} else {
 			log.Println("✅ Background ingestion completed")
+			markFileAsIngested(filename)
 		}
 	}()
 }
@@ -37,7 +46,6 @@ func ingestJLWorkerPool(filename string) error {
 	lines := make(chan map[string]interface{}, 100)
 	var wg sync.WaitGroup
 
-	// Spawn workers
 	for i := 0; i < workerCount; i++ {
 		wg.Add(1)
 		go func() {
@@ -48,7 +56,6 @@ func ingestJLWorkerPool(filename string) error {
 		}()
 	}
 
-	// Feed lines to workers
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		var raw map[string]interface{}
@@ -91,10 +98,14 @@ func processJLLine(raw map[string]interface{}, db *gorm.DB) {
 
 	hotelReviewID := parseInt64(comment["hotelReviewId"])
 
-	// Prevent duplicates
 	var existing models.Review
-	if err := db.Where("hotel_review_id = ?", hotelReviewID).First(&existing).Error; err == nil {
-		// log.Printf("⚠️  Duplicate review skipped: hotelReviewId=%d", hotelReviewID)
+	err := db.Where("hotel_review_id = ?", hotelReviewID).First(&existing).Error
+	if err == nil {
+		// Already exists
+		return
+	}
+	if err != nil && err != gorm.ErrRecordNotFound {
+		log.Printf("❌ DB error while checking for review ID %d: %v", hotelReviewID, err)
 		return
 	}
 
@@ -114,10 +125,8 @@ func processJLLine(raw map[string]interface{}, db *gorm.DB) {
 		return
 	}
 
-	// Update ratings summary
 	var summary models.HotelRatingsSummary
 	if err := db.First(&summary, "hotel_id = ?", hotel.ID).Error; err != nil {
-		// New summary
 		summary = models.HotelRatingsSummary{
 			HotelID:       hotel.ID,
 			TotalReviews:  1,
@@ -127,14 +136,15 @@ func processJLLine(raw map[string]interface{}, db *gorm.DB) {
 		}
 		db.Create(&summary)
 	} else {
-		// Update summary
-		summary.TotalReviews += 1
+		summary.TotalReviews++
 		summary.TotalRating += float64(review.Rating)
 		summary.AverageRating = summary.TotalRating / float64(summary.TotalReviews)
 		summary.LastUpdated = time.Now()
 		db.Save(&summary)
 	}
 }
+
+// --- Utility Functions ---
 
 func getStr(val interface{}) string {
 	if val == nil {
@@ -159,4 +169,30 @@ func parseInt64(val interface{}) int64 {
 func parseTime(val string) time.Time {
 	t, _ := time.Parse(time.RFC3339, val)
 	return t
+}
+
+// --- Ingestion Marker ---
+
+func isAlreadyIngested(filename string) bool {
+	data, err := os.ReadFile(ingestMarkerFile)
+	if err != nil {
+		return false
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) == filepath.Base(filename) {
+			return true
+		}
+	}
+	return false
+}
+
+func markFileAsIngested(filename string) {
+	f, err := os.OpenFile(ingestMarkerFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("⚠️  Could not mark file as ingested: %v", err)
+		return
+	}
+	defer f.Close()
+	_, _ = f.WriteString(filepath.Base(filename) + "\n")
 }
